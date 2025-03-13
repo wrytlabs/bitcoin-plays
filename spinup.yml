@@ -1,0 +1,24 @@
+version: '3'
+
+volumes:
+    blockchain:
+
+services:
+    bitcoind:
+        image: ruimarinho/bitcoin-core
+        container_name: bitcoin-regtest
+        ports:
+            - '18443:18443' # RPC port
+            - '18444:18444' # P2P port
+        volumes:
+            - blockchain:/bitcoin
+        command: -printtoconsole
+            -regtest=1
+            -rpcallowip=0.0.0.0/0
+            -rpcbind=0.0.0.0
+            -server=1
+            -rpcuser=bitcoin
+            -rpcpassword=bitcoin
+            -txindex=1
+            -fallbackfee=0.0002
+            -rest
