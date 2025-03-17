@@ -19,7 +19,7 @@ const config: BitcoinConfig = {
 
 const client = new Client(config);
 
-async function createTx0() {
+async function createTxTrue() {
 	try {
 		const secret = Buffer.from('secret data');
 		const hash160 = bitcoin.crypto.hash160(secret);
@@ -112,9 +112,118 @@ async function createTx0() {
 	}
 }
 
+async function createTxFalse() {
+	try {
+		const secret = Buffer.from('secret data');
+		const hash160 = bitcoin.crypto.hash160(secret);
+
+		const addresses = await client.command(
+			'listreceivedbyaddress',
+			1,
+			true
+		);
+
+		const addressInfo = await client.command(
+			'getaddressinfo',
+			addresses[0].address
+		);
+		const pubkey = Buffer.from(addressInfo.pubkey, 'hex');
+
+		// redeem script
+		const redeemScript = bitcoin.script.compile([
+			bitcoin.opcodes.OP_IF,
+			bitcoin.opcodes.OP_HASH160,
+			hash160,
+			bitcoin.opcodes.OP_EQUAL,
+			bitcoin.opcodes.OP_ELSE,
+			pubkey,
+			bitcoin.opcodes.OP_CHECKSIG,
+			bitcoin.opcodes.OP_ENDIF,
+		]);
+
+		// create the P2SH address from redeemScript
+		const { address } = bitcoin.payments.p2sh({
+			redeem: { output: redeemScript, network: bitcoin.networks.regtest },
+			network: bitcoin.networks.regtest,
+		});
+		console.log('Custom Script Address (P2SH):', address);
+
+		// funding tx
+		const fundingTx =
+			'1de6e0f8345ec80cd321737e4bf9feead5700ac23edbe7dc43d98731e5ea9627';
+		const fundingOut = 0;
+		const fundingAmount = 100000000;
+
+		const psbt = new bitcoin.Psbt({ network: bitcoin.networks.regtest });
+
+		// Add the input
+		psbt.addInput({
+			hash: fundingTx,
+			index: fundingOut,
+			witnessUtxo: {
+				script: redeemScript,
+				value: fundingAmount,
+			},
+		});
+
+		// Add the output
+		const destinationAddress = addresses[0].address;
+		const fee = 1000; // satoshis
+		psbt.addOutput({
+			address: destinationAddress,
+			value: fundingAmount - fee,
+		});
+
+		// Get the raw transaction hex first
+		const unsignedTx = psbt.toBase64();
+		const signedTxResult = await client.command(
+			'walletprocesspsbt',
+			unsignedTx
+		);
+		console.log({ signedTxResult });
+
+		const finalized = await client.command(
+			'finalizepsbt',
+			signedTxResult.psbt
+		);
+
+		console.log({ finalized });
+
+		return;
+
+		// // Then use the signature in your input script
+		// const inputScript = bitcoin.script.compile([
+		// 	Buffer.from(signature, 'hex'),
+		// 	bitcoin.opcodes.OP_FALSE,
+		// 	redeemScript,
+		// ]);
+
+		// // Finalize the input with our custom script
+		// psbt.finalizeInput(0, () => {
+		// 	return {
+		// 		finalScriptSig: inputScript,
+		// 		finalScriptWitness: undefined,
+		// 	};
+		// });
+
+		// // Extract transaction
+		// const rawTx = psbt.extractTransaction().toHex();
+		// console.log('hex: ', rawTx);
+
+		// // Broadcast
+		// const txid = await client.command('sendrawtransaction', rawTx);
+		// console.log('Transaction broadcast:', txid);
+
+		// return txid;
+	} catch (error) {
+		console.error('Failed:', error);
+		throw error;
+	}
+}
+
 async function main() {
 	try {
-		await createTx0();
+		await createTxFalse();
 	} catch (error) {
 		console.error('Main execution failed:', error);
 		process.exit(1);
